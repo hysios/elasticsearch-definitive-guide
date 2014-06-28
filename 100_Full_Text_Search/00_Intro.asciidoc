@@ -1,91 +1,59 @@
 [[full-text-search]]
-== Full text search
+== 全文搜索
 
-Now that we have covered the simple case of searching for structured data,
-it is time to explore _full text search_ -- how to search within full
-text fields in order to find the most relevant documents.
+我们通过前文的简单例子，已经了解了结构化数据的条件搜索；现在，让我们来了解全文搜索--
+怎样通过匹配所有域的文本找到最相关的文章。
 
-The two most important aspects of full text search are:
 
-Relevance::
+关于全文搜索有两个最重要的方面：
 
-    The ability to rank results by how relevant they are to
-    the given query, whether relevance is calculated using
-    TF/IDF (see <<relevance-intro>>), proximity to a geo-location,
-    fuzzy similarity or some other algorithm.
+相似度计算::
+    
+    通过TF/IDF (see <<relevance-intro>>)，地理位置接近算法，模糊相似度算法或者其他算法，用来给给定查询条件的结果排序。
 
-Analysis::
+文本分析::
 
-    The process of converting a block of text into distinct, normalized tokens
-    (see <<analysis-intro>>) in order to (a) create an inverted index and
-    (b) query the inverted index.
+    通过把文本切割和归一化后的词元，去(a)生成倒排索引，或者去(b)查询倒排索引。
 
-As soon as we talk about either relevance or analysis, we are in the territory
-of queries, rather than filters.
+当我们在讨论相似度计算和文本分析的时候，我们只是在讨论查询，而不是过滤
 
 [[term-vs-full-text]]
-=== Term-based vs. Full-text
+=== 词条搜索 vs. 全文搜索
 
-While all queries perform some sort of relevance calculation, not all queries
-have an analysis phase. Besides specialized queries like the `bool` or
-`function_score` queries which don't operate on text at all, textual queries can
-be broken down into two families:
+即使所有的查询都要执行一些相似度排序，但是不是所有的查询条件都需要文本分析。
+因为有些特殊的查询就不是在文本上执行的，列如`bool`和`function_score`。
+它们是boolean查询和数值查询。文本查询可以分为两个种类：
 
-Term-based queries::
+词条查询::
 +
 --
 
-Queries like the `term` or `fuzzy` queries are low-level queries which have no
-analysis phase. They operate on a single term. A `term` query for the term
-`"Foo"` looks for that *exact term* in the inverted index and calculates the
-TF/IDF relevance `_score` for each document that contains the term.
+低级别的`term`和`fuzzy`查询没有文本分析，它们只是在单个词条上查询。列如词条`"Foo"`的`term`查询，
+是在倒排索引种查找*完全匹配的词条*，然后给每一篇包含这个词条的文章做TF/IDF相似度打分。
 
-It is important to remember that the `term` query looks in the inverted index
-for the exact term only -- it won't match any variants like `"foo"` or
-`"FOO"`.  It doesn't matter how the term came to be in the index, just that it
-is.  If you were to index `["Foo","Bar"]` into an exact value `not_analyzed`
-field, or `"Foo Bar"` into an analyzed field with the `whitespace` analyzer,
-both would result in having the two terms `"Foo"` and `"Bar"` in the inverted
-index.
+记住：词条`"Foo"`的`term`查询只是在倒排索引里查找完全匹配的词条，它不会匹配到`"foo"`或者`"FOO"`。
+当你在`not_analyzed`的域用`["Foo","Bar"]`生成索引，或者在用`whitespace`分析器的域用`"Foo Bar"`生成索引，
+它们都会在倒排索引里生成两个词元`"Foo"`和`"Bar"`。
 
 --
 
-Full-text queries::
+全文查询::
+
 +
 --
-
-Queries like the `match` or `query_string` queries are high-level queries
-which understand the mapping of a field:
-
-*  If you use them to query a `date` or `integer` field, they will treat the
-   query string as a date or integer respectively.
-
-*  If you query an exact value (`not_analyzed`) string field, they will treat
-   the whole query string as a single term.
-
-* But if you query a full-text (`analyzed`) field, they will first pass the
-  query string through the appropriate analyzer to produce the list of terms
-  to be queried.
-
-Once the query has assembled a list of terms, it executes the appropriate
-low-level query for each of these terms, then combines  their results to
-produce the final relevance score for each document.
-
-We will discuss this process in more detail in the following chapters.
+高级别的`match`和`query_string`查询能够理解这些域的映射：
+* 如果在`date`和`integer`属性的域，查询文本会被当日期或者整数来对待。
+* 如果在(`not_analyzed`)属性的文本域，查询文本会被当做一个词条来查询。
+* 但是，如果在(`analyzed`)属性的文本域，查询文本会用恰当得分析器去产生词条，而这些词条都会被用来查询。
+一旦查询得到这些词条，它就用适当的低级查询去执行每一个词条，然后用查询结果计算每一篇文章的相似度打分。
+我们将在后面的章节中详细介绍这个过程。
 --
 
-You seldom need to use the term-based queries directly. Usually you want to
-query full text, not individual terms, and this is easier to do with the
-high-level full-text queries (which end up using term-based queries
-internally).
+通常，你几乎都不会直接用到基于词元的查询，更多的，你会用更方便的高级全文查询(其实内部是用基于词元的查询)
 
 **************************************************
-
-If you do find yourself wanting to use a query on an exact value
-`not_analyzed` field, think about whether you really want a query or a filter.
-
-Single-term queries usually represent binary `yes`|`no` questions and are
-almost always better expressed as a filter, so that they can benefit from
+当你想在`not_analyzed`域查询完全匹配值的时候，你应该考虑一下你到底是用查询还是过滤。
+因为单词条查询通常被表示为二元值`yes`|`no`，所以过滤能更好的表达它们。你能从这里收益的
 <<filter-caching,filter caching>>:
 
 [source,js]
